@@ -46,21 +46,11 @@ const SOURCES = {
     keyHint: "공공데이터포털 마이페이지 > 개발계정 상세보기의 일반 인증키(Decoding)",
     defaultParams: { numOfRows: "5", pageNo: "1", resultType: "json" },
   },
-  // 워크넷 채용정보는 제공 경로가 둘이고 인증 체계가 서로 달라 소스를 분리해 둔다.
-  // 고용24 직접(worknet)은 신청이 자동 승인돼도 개인회원 계정으로는 호출이 거부된다.
-  // 따라서 실제로 쓰는 쪽은 공공데이터포털 경유(worknet-portal)다.
-  "worknet-portal": {
-    label: "워크넷 채용정보 (한국고용정보원) — data.go.kr",
-    endpointEnv: "WORKNET_PORTAL_ENDPOINT",
-    keyEnv: "DATA_GO_KR_SERVICE_KEY",
-    keyParam: "serviceKey",
-    keyHint: "공공데이터포털 마이페이지 > 개발계정 상세보기의 일반 인증키(Decoding)",
-    defaultParams: { numOfRows: "5", pageNo: "1", returnType: "XML" },
-  },
-  // 개인회원은 호출 거부됨 ("개인회원은 사용할 수 없는 OPEN-API입니다").
+  // 개인 자격으로는 호출할 수 없다 ("개인회원은 사용할 수 없는 OPEN-API입니다").
+  // 공공데이터포털 3038225도 우회로가 아니다 — API 유형이 LINK라 고용24로 보내기만 한다.
   // 사업자 전환 시 재시도할 수 있도록 정의만 남겨둔다.
   worknet: {
-    label: "워크넷 채용정보 목록 (고용24 직접, 개인회원 불가) — work24.go.kr",
+    label: "워크넷 채용정보 목록 (고용24, 개인회원 불가) — work24.go.kr",
     endpointEnv: "WORKNET_API_ENDPOINT",
     // 고용24는 요청 URL이 명세에 고정 공개돼 있어 .env가 비어 있어도 동작한다
     fallbackEndpoint:
