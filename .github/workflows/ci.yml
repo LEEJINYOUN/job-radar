@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 같은 브랜치에 연속 푸시하면 이전 실행을 취소한다
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 검증
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # packageManager 필드(pnpm@11.13.1)를 읽어 버전을 맞춘다
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      # 워크스페이스 스크립트 검증.
+      # backend/frontend 생성 전에는 대상이 없어 통과하고, 생성되면 자동으로 실제 검사가 돈다.
+      - name: 린트
+        run: pnpm -r --if-present run lint
+
+      - name: 빌드
+        run: pnpm -r --if-present run build
+
+      - name: 테스트
+        run: pnpm -r --if-present run test
+
+      # 루트 유틸 스크립트는 워크스페이스에 속하지 않으므로 별도로 문법만 확인한다
+      - name: 스크립트 문법 검사
+        run: |
+          for file in scripts/*.mjs; do
+            node --check "$file"
+          done
+
+      # 문서 rename/이동 시 링크가 조용히 깨지는 것을 잡는다
+      - name: 문서 링크 검사
+        run: pnpm check:links
+
+      # 컴포즈 파일 문법 및 변수 참조 검증
+      - name: 도커 컴포즈 검증
+        run: docker compose -f docker-compose.yml config --quiet
