@@ -210,7 +210,27 @@ flowchart LR
 
 ## 로컬 실행
 
-> 준비 중 — Phase 1 착수 후 작성 예정
+인프라(PostgreSQL·Meilisearch·Redis)는 바로 띄울 수 있다. 애플리케이션은 Phase 1에서 생성한다.
+
+```bash
+cp .env.example .env   # API 키 입력
+pnpm infra:up          # 인프라 기동
+pnpm probe alio        # 오픈API 응답 구조 확인
+```
+
+전체 절차와 API 키 발급 방법은 [docs/setup.md](docs/setup.md) 참고.
+
+---
+
+## 문서
+
+| 문서 | 내용 |
+|------|------|
+| [architecture.md](docs/architecture.md) | 시스템 구성, 스택, 모듈 계획, 현재 진행 상태 |
+| [erd.md](docs/erd.md) | 데이터 모델 초안과 설계 근거 |
+| [api.md](docs/api.md) | API 명세 |
+| [data-sources.md](docs/data-sources.md) | **소스별 응답 구조 실측 분석과 정규화 설계 결정** |
+| [setup.md](docs/setup.md) | 개발 환경 준비, API 키 발급 절차 |
 
 ---
 
