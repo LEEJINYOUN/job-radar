@@ -1,0 +1,41 @@
+# 의존성
+node_modules/
+.pnpm-store/
+
+# 빌드 산출물
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# 환경변수 — .env.example만 커밋한다
+.env
+.env.*
+!.env.example
+
+# 도커 볼륨 (로컬 데이터)
+docker/volumes/
+pgdata/
+meili_data/
+
+# 로그
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 테스트
+coverage/
+.nyc_output/
+
+# 에디터 / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# 수집 데이터 샘플 (API 응답 원본 — 저장소에 올리지 않는다)
+samples/
+*.sample.json

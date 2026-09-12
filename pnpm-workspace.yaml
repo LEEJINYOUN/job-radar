@@ -1,0 +1,5 @@
+# pnpm workspace 구성 — backend/frontend를 한 레포에서 관리한다
+packages:
+  - "backend"
+  - "frontend"
+  - "packages/*"

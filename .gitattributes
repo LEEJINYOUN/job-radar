@@ -1,0 +1,11 @@
+# 줄바꿈을 LF로 통일 (Windows 로컬 ↔ 도커/리눅스 배포 환경 차이 방지)
+* text=auto eol=lf
+
+# 바이너리 — 변환 대상에서 제외
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

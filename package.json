@@ -1,0 +1,21 @@
+{
+  "name": "job-radar",
+  "version": "0.0.0",
+  "private": true,
+  "description": "공식 API만 연동하는 채용공고 통합검색 서비스",
+  "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:reset": "docker compose down -v",
+    "infra:logs": "docker compose logs -f",
+    "probe": "node scripts/probe.mjs",
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  }
+}

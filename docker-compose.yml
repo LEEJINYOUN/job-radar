@@ -1,0 +1,49 @@
+services:
+  # 공고 저장소. pg_trgm 확장으로 회사명·제목 유사도를 DB에서 직접 계산한다.
+  postgres:
+    image: postgres:16-alpine
+    container_name: job-radar-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-job_radar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-job_radar}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 최초 기동 시 확장(pg_trgm 등)을 자동 설치
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-job_radar}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 공고 검색 인덱스. 한국어 토크나이징과 동의어 사전을 담당한다.
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: job-radar-search
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-change_me_at_least_16_bytes}
+      MEILI_ENV: development
+    ports:
+      - "7700:7700"
+    volumes:
+      - meilidata:/meili_data
+
+  # 수집 작업 큐 + 외부 API 잔여 쿼터 카운터
+  redis:
+    image: redis:7-alpine
+    container_name: job-radar-cache
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  meilidata:
+  redisdata:
