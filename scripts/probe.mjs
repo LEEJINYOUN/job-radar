@@ -1,10 +1,11 @@
-// 공공데이터포털 오픈API를 실제로 한 번 호출해 원본 응답 구조를 확인하는 스크립트.
+// 오픈API를 실제로 한 번 호출해 원본 응답 구조를 확인하는 스크립트.
 // 수집 어댑터를 작성하기 전에 필드 이름·타입·중첩 구조를 눈으로 보는 용도다.
 //
 // 사용법:
 //   node scripts/probe.mjs alio
 //   node scripts/probe.mjs alio numOfRows=10 pageNo=2
 //   node scripts/probe.mjs worknet
+//   node scripts/probe.mjs worknet returnType=JSON display=20
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -33,29 +34,90 @@ function loadEnv() {
   }
 }
 
-// 소스별 엔드포인트와 기본 파라미터.
-// endpoint는 공공데이터포털 마이페이지의 End Point 값을 .env에 넣어 사용한다.
+// 소스별 호출 규약.
+// 공공데이터포털(data.go.kr)과 고용24(work24.go.kr)는 인증 파라미터 이름부터 페이징 방식까지
+// 전부 다르다. 어댑터가 결국 흡수해야 할 차이라서 프로브 단계부터 소스별로 분리해 둔다.
 const SOURCES = {
   alio: {
-    label: "공공기관 채용정보 (잡알리오)",
+    label: "공공기관 채용정보 (잡알리오) — data.go.kr",
     endpointEnv: "ALIO_API_ENDPOINT",
+    keyEnv: "DATA_GO_KR_SERVICE_KEY",
+    keyParam: "serviceKey",
+    keyHint: "공공데이터포털 마이페이지 > 개발계정 상세보기의 일반 인증키(Decoding)",
     defaultParams: { numOfRows: "5", pageNo: "1", resultType: "json" },
   },
   worknet: {
-    label: "워크넷 채용정보 (고용24)",
+    label: "워크넷 채용정보 목록 (고용24) — work24.go.kr",
     endpointEnv: "WORKNET_API_ENDPOINT",
-    defaultParams: { numOfRows: "5", pageNo: "1", returnType: "JSON" },
+    // 고용24는 요청 URL이 명세에 고정 공개돼 있어 .env가 비어 있어도 동작한다
+    fallbackEndpoint:
+      "https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo210L01.do",
+    keyEnv: "WORK24_API_KEY",
+    keyParam: "authKey",
+    keyHint: "고용24 > OPEN-API > 서비스 소개 및 신청에서 발급받은 인증키",
+    // callTp: L=목록 / D=상세, 페이징은 startPage·display (pageNo·numOfRows가 아니다)
+    defaultParams: { callTp: "L", returnType: "XML", startPage: "1", display: "5" },
   },
 };
 
-// 응답을 JSON으로 파싱해보고, 실패하면 원문을 그대로 돌려준다.
-// data.go.kr은 오류 시 resultType=json이어도 XML을 반환하는 경우가 많다.
-function tryParse(text) {
+// 응답을 JSON으로 파싱해본다.
+function tryJson(text) {
   try {
-    return { ok: true, data: JSON.parse(text) };
+    return JSON.parse(text);
   } catch {
-    return { ok: false, data: null };
+    return null;
   }
+}
+
+// XML 엔티티를 원문자로 되돌린다. 공고 제목·회사명에 &amp;, &lt;가 그대로 실려 온다.
+function decodeEntities(text) {
+  const named = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
+  return text.replace(/&(?:#(\d+)|#x([\da-fA-F]+)|([a-z]+));/gi, (all, dec, hex, name) => {
+    if (dec) return String.fromCodePoint(Number(dec));
+    if (hex) return String.fromCodePoint(parseInt(hex, 16));
+    return named[name.toLowerCase()] ?? all;
+  });
+}
+
+// XML을 객체 트리로 바꾼다.
+// 고용24는 returnType=XML이 기본이고, data.go.kr도 오류 시 resultType=json을 무시하고 XML을 준다.
+// 두 경우 모두 JSON 응답과 같은 방식으로 훑기 위해 최소한의 파서를 직접 둔다.
+// (데이터 피드 전용 — 속성과 혼합 콘텐츠는 다루지 않는다)
+function parseXml(xml) {
+  const values = [{}];
+  const names = [];
+  let text = "";
+  const token =
+    /<!\[CDATA\[([\s\S]*?)\]\]>|<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<\/([^>]+)>|<([^\s/>]+)([^>]*?)(\/?)>|([^<]+)/g;
+
+  // 닫히는 요소를 부모에 붙인다. 같은 이름이 반복되면 배열로 모은다.
+  const attach = (name, value) => {
+    const parent = values[values.length - 1];
+    if (parent[name] === undefined) parent[name] = value;
+    else if (Array.isArray(parent[name])) parent[name].push(value);
+    else parent[name] = [parent[name], value];
+  };
+
+  let match;
+  while ((match = token.exec(xml)) !== null) {
+    const [, cdata, closing, opening, , selfClosing, chars] = match;
+
+    if (cdata !== undefined) text += cdata;
+    else if (closing !== undefined) {
+      const node = values.pop();
+      attach(names.pop(), Object.keys(node).length ? node : text.trim());
+      text = "";
+    } else if (opening !== undefined) {
+      if (selfClosing) attach(opening, "");
+      else {
+        values.push({});
+        names.push(opening);
+        text = "";
+      }
+    } else if (chars !== undefined) text += decodeEntities(chars);
+  }
+
+  return values[0];
 }
 
 // 응답에서 실제 레코드 배열을 찾아낸다. 스키마가 소스마다 달라 탐색적으로 접근한다.
@@ -69,6 +131,16 @@ function findRecordArray(node, depth = 0) {
   return null;
 }
 
+// 레코드 배열을 감싸고 있는 껍데기에서 총건수 같은 스칼라 값만 모은다
+function collectScalars(node, depth = 0, out = {}) {
+  if (depth > 4 || node == null || typeof node !== "object" || Array.isArray(node)) return out;
+  for (const [key, value] of Object.entries(node)) {
+    if (typeof value === "object") collectScalars(value, depth + 1, out);
+    else if (out[key] === undefined) out[key] = value;
+  }
+  return out;
+}
+
 async function main() {
   const [sourceName, ...paramArgs] = process.argv.slice(2);
   const source = SOURCES[sourceName];
@@ -79,16 +151,17 @@ async function main() {
   }
 
   const env = loadEnv();
-  const endpoint = env[source.endpointEnv];
-  const serviceKey = env.DATA_GO_KR_SERVICE_KEY;
+  const endpoint = env[source.endpointEnv] || source.fallbackEndpoint;
+  const authValue = env[source.keyEnv];
 
   if (!endpoint) {
     console.error(`[!] .env에 ${source.endpointEnv}가 비어 있습니다.`);
-    console.error("    공공데이터포털 마이페이지의 End Point 값을 넣으세요.");
+    console.error("    API 상세 페이지의 요청 URL(End Point)을 넣으세요.");
     process.exit(1);
   }
-  if (!serviceKey) {
-    console.error("[!] .env에 DATA_GO_KR_SERVICE_KEY가 비어 있습니다. (Decoding 키)");
+  if (!authValue) {
+    console.error(`[!] .env에 ${source.keyEnv}가 비어 있습니다.`);
+    console.error(`    ${source.keyHint}`);
     process.exit(1);
   }
 
@@ -100,17 +173,17 @@ async function main() {
     })
   );
 
-  // URLSearchParams가 자동 인코딩하므로 Decoding 키를 그대로 넣는다.
-  // Encoding 키를 넣으면 이중 인코딩되어 SERVICE_KEY_IS_NOT_REGISTERED_ERROR가 난다.
+  // URLSearchParams가 자동 인코딩하므로 키는 디코딩된 원본을 그대로 넣는다.
+  // data.go.kr Encoding 키를 넣으면 이중 인코딩되어 SERVICE_KEY_IS_NOT_REGISTERED_ERROR가 난다.
   const params = new URLSearchParams({
-    serviceKey,
+    [source.keyParam]: authValue,
     ...source.defaultParams,
     ...overrides,
   });
   const url = `${endpoint}?${params}`;
 
   console.log(`\n[소스] ${source.label}`);
-  console.log(`[요청] ${url.replace(serviceKey, "***")}\n`);
+  console.log(`[요청] ${url.replace(encodeURIComponent(authValue), "***").replace(authValue, "***")}\n`);
 
   const res = await fetch(url);
   const text = await res.text();
@@ -118,11 +191,12 @@ async function main() {
   console.log(`[상태] ${res.status} ${res.statusText}`);
   console.log(`[타입] ${res.headers.get("content-type")}\n`);
 
-  const parsed = tryParse(text);
+  // 선언된 타입을 믿지 않고 본문 첫 글자로 판별한다
+  const body = text.trim();
+  const data = body.startsWith("<") ? parseXml(body) : tryJson(body);
 
-  if (!parsed.ok) {
-    // XML 오류 응답이 대부분이다. 원문을 그대로 보여줘야 원인을 알 수 있다.
-    console.log("[원문] JSON 파싱 실패 — 응답 원문:\n");
+  if (!data) {
+    console.log("[원문] JSON·XML 어느 쪽으로도 파싱되지 않았습니다 — 응답 원문:\n");
     console.log(text.slice(0, 2000));
     process.exit(1);
   }
@@ -131,11 +205,20 @@ async function main() {
   const outDir = resolve(ROOT, "samples");
   mkdirSync(outDir, { recursive: true });
   const outPath = resolve(outDir, `${sourceName}-${Date.now()}.json`);
-  writeFileSync(outPath, JSON.stringify(parsed.data, null, 2), "utf8");
+  writeFileSync(outPath, JSON.stringify(data, null, 2), "utf8");
 
-  const records = findRecordArray(parsed.data);
+  const records = findRecordArray(data);
 
   if (records) {
+    const meta = collectScalars(data);
+    if (Object.keys(meta).length) {
+      console.log("[응답 메타]");
+      for (const [key, value] of Object.entries(meta)) {
+        console.log(`  ${key.padEnd(20)} ${String(value).slice(0, 60)}`);
+      }
+      console.log("");
+    }
+
     console.log(`[레코드] ${records.length}건 확인\n`);
     console.log("[필드 목록]");
     for (const key of Object.keys(records[0])) {
@@ -145,7 +228,7 @@ async function main() {
     }
   } else {
     console.log("[구조] 레코드 배열을 찾지 못했습니다. 저장된 파일을 직접 확인하세요.\n");
-    console.log(JSON.stringify(parsed.data, null, 2).slice(0, 2000));
+    console.log(JSON.stringify(data, null, 2).slice(0, 2000));
   }
 
   console.log(`\n[저장] ${outPath}`);
