@@ -32,24 +32,27 @@
 > 개발계정은 일일 트래픽 제한이 있다(API마다 다르며 신청 화면에 표시된다).
 > 한도를 넘길 것 같으면 같은 화면에서 **운영계정 전환**을 신청한다.
 
-### 2-2. 고용24 OPEN-API (워크넷 채용정보)
+### 2-2. 워크넷 채용정보 — 포털 경유로 받는다
 
-워크넷 채용정보는 **경로가 두 개**다. 공공데이터포털을 경유하는 쪽(2-1)과, 고용24에서 직접 발급받는 쪽이다. 후자가 제공 데이터가 많고 채용정보 외에 직업정보·훈련정보·고용통계까지 열려 있다. `pnpm probe worknet`은 **직접 발급 경로**를 호출한다.
+워크넷 채용정보는 경로가 두 개인데, **개인 계정으로 실제 호출이 되는 건 공공데이터포털 경유뿐이다.**
 
-1. <https://www.work24.go.kr> 회원가입 후 로그인
-2. **OPEN-API → 서비스 소개 및 신청** → 채용정보 서비스 신청
-3. 발급된 인증키를 `.env`의 `WORK24_API_KEY`에 입력
+1. 2-1에서 `한국고용정보원_워크넷 채용정보`(`3038225`) 활용신청
+2. 상세 페이지의 End Point를 `.env`의 `WORKNET_PORTAL_ENDPOINT`에 입력
+   (인증키는 2-1의 `DATA_GO_KR_SERVICE_KEY`를 그대로 쓴다)
 
 ```bash
-pnpm probe worknet             # 채용정보목록 (callTp=L)
-pnpm probe worknet display=20  # 페이지당 건수 조정
+pnpm probe worknet-portal
 ```
 
-> 인증 파라미터가 `authKey`이고 페이징이 `startPage`·`display`다. 공공데이터포털의 `serviceKey`·`pageNo`·`numOfRows`와 다르므로 키를 서로 바꿔 넣지 않는다.
-> 요청 URL은 명세에 고정 공개돼 있어 `WORKNET_API_ENDPOINT`를 비워두면 기본값으로 호출한다.
-> 자세한 차이는 [data-sources.md](data-sources.md) 2절 참고.
+> **고용24(`work24.go.kr`) 직접 발급 경로는 개인이 쓸 수 없다.**
+> 신청은 자동 승인되고 인증키까지 발급되지만, 호출하면
+> `개인회원은 사용할 수 없는 OPEN-API입니다`로 거부된다.
+> 채용정보 재배포에 직업정보제공사업 신고가 필요해서다.
+> 사업자 전환 시 재시도할 수 있도록 `pnpm probe worknet` 정의와
+> `WORK24_RECRUIT_KEY` / `WORK24_COMMON_CODE_KEY` 칸은 남겨뒀다.
+> 경위와 호출 규약 차이는 [data-sources.md](data-sources.md) 2절 참고.
 >
-> 시스템 점검 중에는 API도 함께 중단된다. 점검 공지는 고용24 상단 배너에 뜬다.
+> 워크넷 공고를 화면에 노출할 때는 **고용24 출처 배지 표기가 의무**다. 같은 문서 2절 확인.
 
 ### 2-3. 사람인 채용정보 API
 
